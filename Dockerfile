@@ -1,4 +1,4 @@
-FROM golang:1.9.0 as builder
+FROM golang:1.11.4 as builder
 
 WORKDIR /go/src/github.com/inigofu/shippy-user-cli
 
