@@ -1,0 +1,23 @@
+{
+    "name":"Admin",
+    "url": "/admin",
+    "icon": "icon-puzzle",
+    "children": [
+      { "name": "Form",
+        "url": "/admin/form",
+        "icon": "icon-puzzle"
+      },
+      { "name": "Fields",
+        "url": "/admin/fields",
+        "icon": "icon-puzzle"
+      },
+      { "name": "Roles",
+        "url": "/admin/roles",
+        "icon": "icon-puzzle"
+      },
+      { "name": "Users",
+        "url": "/admin/users",
+        "icon": "icon-puzzle"
+      }
+    ]
+}

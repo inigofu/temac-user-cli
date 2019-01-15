@@ -1,98 +1,110 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
-	"github.com/dgrijalva/jwt-go"
 	pb "github.com/inigofu/temac-user-service/proto/auth"
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	microclient "github.com/micro/go-micro/client"
+	"github.com/micro/go-micro/cmd"
+	"github.com/micro/go-micro/metadata"
+	"golang.org/x/net/context"
 )
-
-type CustomClaims struct {
-	User *pb.User
-	jwt.StandardClaims
-}
 
 func main() {
 
-	// Creates a database connection and handles
-	// closing it again before exit.
-	host := "localhost:54321"
-	username := "postgres"
-	DBName := "postgres"
-	password := "postgres"
-	db, err := gorm.Open(
-		"postgres",
-		fmt.Sprintf(
-			"postgres://%s:%s@%s/%s?sslmode=disable",
-			username, password, host, DBName,
-		),
-	)
-	defer db.Close()
+	cmd.Init()
 
+	// Create new greeter client
+	client := pb.NewAuthService("temac.auth", microclient.DefaultClient)
+
+	var user pb.User
+	configFile, err := os.Open("user.json")
+	defer configFile.Close()
 	if err != nil {
-		log.Fatalf("Could not connect to DB: %v", err)
+		fmt.Println(err.Error())
 	}
-	// db.LogMode(true)
+	jsonParser := json.NewDecoder(configFile)
+	jsonParser.Decode(&user)
+	log.Print("user", user)
 
-	user := &pb.User{}
-	//var roles []*pb.Role
-	var menues []*pb.Menu
-	var rolmenuesall []*pb.Menu
-	email := "martin4"
-	if err := db.Preload("Roles.Menues").Select("id").Where("email = ?", email).
-		First(&user).Error; err != nil {
-		fmt.Println("errp", err)
-	}
-
-	for _, role := range user.Roles {
-		rolmenuesall = append(rolmenuesall, role.Menues...)
-	}
-	var rolmenues []string
-	for _, role := range rolmenuesall {
-		rolmenues = append(rolmenues, role.Id)
-	}
-	type Result struct {
-		Children_id string
-	}
-	// fmt.Println(rolmenues)
-	var results []Result
-	var childrenid []string
-	db.Raw("SELECT children_id FROM menu_childrens").Scan(&results)
-	for _, result := range results {
-		childrenid = append(childrenid, result.Children_id)
-	}
-	// (*sql.Row)
-	// fmt.Println(childrenid)
-	if err := db.Not(childrenid).Where(rolmenues).Preload("Children", "id in (?)", rolmenues).Find(&menues).Error; err != nil {
-		fmt.Println("errp 2", err)
-	}
-	// fmt.Println(menues)
-
-	key := []byte("mySuperSecretKeyLol")
-	claims := CustomClaims{
-		user,
-		jwt.StandardClaims{
-			ExpiresAt: 24,
-			Issuer:    "temac.user",
-		},
-	}
-	fmt.Println("start token")
-	// Create token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	tokenString, err := token.SignedString(key)
-	fmt.Println("token", tokenString)
-	token2, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return key, nil
-	})
-	fmt.Println(token2)
-	// Validate the token and return the custom claims
-	if claims, ok := token2.Claims.(*CustomClaims); ok && token2.Valid {
-		fmt.Println(claims)
+	ruser, err := client.Create(context.TODO(), &user)
+	if err != nil {
+		log.Println("Could not create: %v", err)
 	} else {
-		fmt.Println(err)
+		log.Printf("Created: %s", ruser.User.Idcode)
 	}
+	rauth, err := client.Auth(context.TODO(), &user)
+	if err != nil {
+		log.Fatalf("Could not auth: %v", err)
+	}
+	// let's just exit because
+	log.Println("autg with token", rauth.Token.Token)
+
+	var menu pb.Menu
+	configFile, err = os.Open("menu.json")
+	defer configFile.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	jsonParser = json.NewDecoder(configFile)
+	jsonParser.Decode(&menu)
+	log.Println("menu", menu)
+	ctx := metadata.NewContext(context.TODO(), map[string]string{
+		"Authorization": rauth.Token.Token,
+	})
+	rmenu, err := client.CreateMenu(ctx, &menu)
+	if err != nil {
+		log.Println("Could not create: %v", err)
+	} else {
+		log.Printf("Created menu: %s", rmenu)
+	}
+
+	var role pb.Role
+	configFile, err = os.Open("role.json")
+	defer configFile.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	jsonParser = json.NewDecoder(configFile)
+	jsonParser.Decode(&role)
+	log.Println("role", role)
+
+	rrole, err := client.CreateRole(ctx, &role)
+	if err != nil {
+		log.Println("Could not create: %v", err)
+	} else {
+		log.Printf("Created role: %s", rrole)
+	}
+	temprole := make([]*pb.Role, 1)
+	temprole[0] = &pb.Role{Idcode: rrole.Role.Idcode}
+	user = *ruser.User
+	user.Roles = temprole
+	log.Printf("Updating user: %s", user)
+	ruser, err = client.UpdateUser(ctx, &user)
+	if err != nil {
+		log.Println("Could not update: %v", err)
+	} else {
+		log.Printf("Created use: %s", ruser)
+	}
+	var form pb.Form
+	configFile, err = os.Open("form.json")
+	defer configFile.Close()
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	jsonParser = json.NewDecoder(configFile)
+	jsonParser.Decode(&form)
+	log.Println("form", form)
+
+	rform, err := client.CreateForm(ctx, &form)
+	if err != nil {
+		log.Println("Could not create form: %v", err)
+	} else {
+		log.Printf("Created form: %s", rform)
+	}
+	log.Printf("Procedure finished")
+	os.Exit(0)
 }
