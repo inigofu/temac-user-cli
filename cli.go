@@ -89,7 +89,7 @@ func main() {
 	} else {
 		log.Printf("Created use: %s", ruser)
 	}
-	var form pb.Form
+	var form []pb.Form
 	configFile, err = os.Open("form.json")
 	defer configFile.Close()
 	if err != nil {
@@ -98,12 +98,13 @@ func main() {
 	jsonParser = json.NewDecoder(configFile)
 	jsonParser.Decode(&form)
 	log.Println("form", form)
-
-	rform, err := client.CreateForm(ctx, &form)
-	if err != nil {
-		log.Println("Could not create form: %v", err)
-	} else {
-		log.Printf("Created form: %s", rform)
+	for _, element := range form {
+		rform, err := client.CreateForm(ctx, &element)
+		if err != nil {
+			log.Println("Could not create form: %v", err)
+		} else {
+			log.Printf("Created form: %s", rform)
+		}
 	}
 	log.Printf("Procedure finished")
 	os.Exit(0)
